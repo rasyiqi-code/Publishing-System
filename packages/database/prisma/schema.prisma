@@ -1,0 +1,217 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- AUTHENTICATION & RBAC ---
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // For credentials provider
+  
+  roleId        String?
+  role          Role?     @relation(fields: [roleId], references: [id])
+  
+  accounts      Account[]
+  sessions      Session[]
+  projects      Project[] // Projects owned/authored by user
+  notifications Notification[]
+  pushSubscriptions PushSubscription[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // 'admin', 'marketing', 'author'
+  description String?
+  permissions String?  // JSON string of permissions e.g. ["project.create", "user.view"]
+  users       User[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- CORE BUSINESS LOGIC ---
+
+// 1. Master Data (Bahan Baku)
+model MasterDataPoint {
+  id        String   @id // e.g., 'order_entry', 'dp_confirm'
+  label     String
+  role      String   // e.g., 'Marketing', 'Finance'
+  group     String   // e.g., 'admin', 'production'
+  inputType String?  // e.g., 'date', 'text'
+  
+  steps     ServiceStep[]
+  logs      ProjectLog[]
+}
+
+// 2. Service Definition (Resep)
+model ServiceDefinition {
+  id        String   @id // e.g., 'spt_full', 'satuan_print'
+  name      String
+  uiMode    String   // 'timeline' | 'ticket'
+  
+  steps     ServiceStep[]
+  projects  Project[]
+  products  Product[]
+}
+
+  // 3. Service Steps (Urutan Resep)
+model ServiceStep {
+  id              String   @id @default(cuid())
+  serviceId       String
+  dataPointId     String
+  stepOrder       Int      // 1, 2, 3...
+  isMandatory     Boolean  @default(true) // Added to match blueprint
+  dependencyRule  String?  // JSON string: { requiredStep: string, status: string }
+  
+  service         ServiceDefinition @relation(fields: [serviceId], references: [id])
+  dataPoint       MasterDataPoint   @relation(fields: [dataPointId], references: [id])
+
+  @@unique([serviceId, stepOrder]) 
+}
+
+// 4. Products (Marketable Item)
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Int      @default(0)
+  features    String?  // JSON string
+  specs       String?  // JSON string
+  image       String?
+  isActive    Boolean  @default(true)
+  category    String?  // 'package', 'single_service' (Legacy, migrating to relation)
+  
+  categoryId  String?
+  productCategory ProductCategory? @relation(fields: [categoryId], references: [id])
+
+  serviceId   String
+  service     ServiceDefinition @relation(fields: [serviceId], references: [id])
+  projects    Project[]
+}
+
+model ProductCategory {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique // e.g., 'paket_penerbitan', 'jasa_satuan'
+  description String?
+  order       Int       @default(0) // For sorting in UI
+  
+  products    Product[]
+}
+
+// 4. Projects (Instance)
+model Project {
+  id              String   @id // e.g., 'SPT-2025-001'
+  title           String
+  authorId        String?  // Link to User
+  // Legacy string for fallback if needed, but prefer relation
+  authorName      String? 
+  
+  serviceId       String
+  productId       String? // Link to the product sold
+  status          String   @default("active") // 'active', 'completed', 'warning'
+  
+  // Specific Meta Data
+  publisher       String?
+  category        String?  // 'kbm', 'umum', 'penulis' - For segmentation
+  quantity        Int?
+  
+  publicToken     String?  @unique @default(uuid()) // Accessible via /track/[token]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  author          User?             @relation(fields: [authorId], references: [id])
+  service         ServiceDefinition @relation(fields: [serviceId], references: [id])
+  product         Product?          @relation(fields: [productId], references: [id])
+  logs            ProjectLog[]
+}
+
+// 5. Project Logs (Status per Step)
+model ProjectLog {
+  id              String   @id @default(cuid())
+  projectId       String
+  dataPointId     String
+  value           String?  // Actual value: '2025-01-20' or 'active'
+  status          String   @default("completed") // 'completed', 'active', 'pending'
+  updatedAt       DateTime @updatedAt
+
+  project         Project         @relation(fields: [projectId], references: [id])
+  dataPoint       MasterDataPoint @relation(fields: [dataPointId], references: [id])
+
+  @@unique([projectId, dataPointId])
+}
+
+// 6. Notifications
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 7. System Settings
+model GlobalSettings {
+  key         String   @id // e.g., 'brand_name', 'maintenance_mode'
+  value       String   // JSON value or simple string
+  group       String   // 'identity', 'system'
+  description String?
+  updatedAt   DateTime @updatedAt
+}

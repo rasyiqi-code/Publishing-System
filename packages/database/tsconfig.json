@@ -1,0 +1,17 @@
+{
+    "extends": "../../packages/config/tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "rootDir": ".",
+        "types": [
+            "node"
+        ]
+    },
+    "include": [
+        "."
+    ],
+    "exclude": [
+        "dist",
+        "verify-db.ts"
+    ]
+}

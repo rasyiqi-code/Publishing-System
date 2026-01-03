@@ -1,0 +1,20 @@
+{
+    "name": "@repo/auth",
+    "version": "0.0.0",
+    "main": "index.ts",
+    "types": "index.ts",
+    "exports": {
+        ".": "./index.ts",
+        "./config": "./auth.config.ts"
+    },
+    "dependencies": {
+        "next-auth": "5.0.0-beta.25",
+        "@repo/database": "workspace:*",
+        "@auth/prisma-adapter": "^1.4.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/node": "^20.0.0",
+        "@repo/config": "workspace:*"
+    }
+}

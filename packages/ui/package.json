@@ -1,0 +1,23 @@
+{
+    "name": "@repo/ui",
+    "version": "0.0.0",
+    "main": "./src/index.tsx",
+    "types": "./src/index.tsx",
+    "exports": {
+        ".": "./src/index.tsx"
+    },
+    "devDependencies": {
+        "@repo/config": "workspace:*",
+        "@types/react": "^18.0.0",
+        "@types/react-dom": "^18.0.0",
+        "typescript": "^5.0.0"
+    },
+    "dependencies": {
+        "react": "^18.0.0",
+        "react-dom": "^18.0.0",
+        "clsx": "^2.0.0",
+        "tailwind-merge": "^2.0.0",
+        "lucide-react": "^0.200.0",
+        "framer-motion": "^10.0.0"
+    }
+}

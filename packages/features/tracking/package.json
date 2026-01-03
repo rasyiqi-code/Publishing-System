@@ -1,0 +1,22 @@
+{
+    "name": "@repo/feature-tracking",
+    "version": "0.0.0",
+    "main": "./src/index.tsx",
+    "types": "./src/index.tsx",
+    "exports": {
+        ".": "./src/index.tsx"
+    },
+    "devDependencies": {
+        "@repo/config": "workspace:*",
+        "@types/react": "^18.0.0",
+        "@types/react-dom": "^18.0.0",
+        "typescript": "^5.0.0"
+    },
+    "dependencies": {
+        "@repo/ui": "workspace:*",
+        "@repo/core": "workspace:*",
+        "react": "^18.0.0",
+        "react-dom": "^18.0.0",
+        "date-fns": "^3.0.0"
+    }
+}
