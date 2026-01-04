@@ -49,7 +49,7 @@ export default async function AdminLayout({
     const brandName = (identitySettings as any[])?.find((s: any) => s.key === 'brand_name')?.value || 'Timeline Mgmt';
 
     return (
-        <AdminShell user={session.user} brandName={brandName}>
+        <AdminShell user={session.user} brandName={brandName} permissions={permissions}>
             {children}
         </AdminShell>
     );

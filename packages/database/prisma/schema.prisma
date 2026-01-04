@@ -1,6 +1,6 @@
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -68,15 +68,25 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+
 }
 
 // --- CORE BUSINESS LOGIC ---
+
+// 0. Client Segments (Dynamic Categories)
+model ClientSegment {
+  code           String  @id // e.g. 'kbm', 'umum'
+  label          String
+  viewPermission String? // e.g. 'view_segment_institutional'
+  order          Int     @default(0)
+}
 
 // 1. Master Data (Bahan Baku)
 model MasterDataPoint {
   id        String   @id // e.g., 'order_entry', 'dp_confirm'
   label     String
   role      String   // e.g., 'Marketing', 'Finance'
+  requiredPermission String? // [NEW] 'manage_order', 'manage_creative_flow', etc.
   group     String   // e.g., 'admin', 'production'
   inputType String?  // e.g., 'date', 'text'
   
@@ -155,6 +165,7 @@ model Project {
   // Specific Meta Data
   publisher       String?
   category        String?  // 'kbm', 'umum', 'penulis' - For segmentation
+  managedBy       String?  // [NEW] Dynamic Override: 'marketing_kbm', etc.
   quantity        Int?
   
   publicToken     String?  @unique @default(uuid()) // Accessible via /track/[token]

@@ -161,6 +161,29 @@ export const CreateProjectForm = ({ services, products, categories, onCreate }: 
                         </div>
                     </div>
 
+                    <div className="mt-6">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                            Kategori / Departemen
+                        </label>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            {categories.map((cat: any) => (
+                                <label key={cat.id} className="cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="category"
+                                        value={cat.slug}
+                                        className="peer sr-only"
+                                        defaultChecked={cat.slug === 'umum'} // Default fallback
+                                    />
+                                    <div className="p-4 rounded-xl border-2 border-slate-200 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 transition-all text-center h-full flex flex-col items-center justify-center">
+                                        <span className="block font-bold text-slate-700 peer-checked:text-indigo-700">{cat.name}</span>
+                                        {cat.description && <span className="text-xs text-slate-400 mt-1 line-clamp-1">{cat.description}</span>}
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="pt-6 flex gap-4">
                         <Link href="/" className="flex-1 py-4 text-center font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors flex items-center justify-center">
                             Batal

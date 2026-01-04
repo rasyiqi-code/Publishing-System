@@ -9,10 +9,11 @@ interface ProjectDetailClientProps {
     project: any;
     userRole: string;
     baseRole: string;
+    permissions?: Record<string, string>; // [NEW]
     onUpdateStatus: (projectId: string, stepId: string, status: string, value?: string) => Promise<void>;
 }
 
-export function ProjectDetailClient({ project, userRole: initialRole, baseRole, onUpdateStatus }: ProjectDetailClientProps) {
+export function ProjectDetailClient({ project, userRole: initialRole, baseRole, permissions, onUpdateStatus }: ProjectDetailClientProps) {
     const router = useRouter();
     const [userRole, setUserRole] = useState(initialRole);
 
@@ -21,6 +22,7 @@ export function ProjectDetailClient({ project, userRole: initialRole, baseRole, 
             <ProjectDetail
                 project={project}
                 userRole={userRole}
+                permissions={permissions} // [NEW]
                 onBack={() => router.push('/')}
                 onUpdateStatus={onUpdateStatus}
             />

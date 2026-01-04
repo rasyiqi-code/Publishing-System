@@ -4,6 +4,7 @@ import { auth } from "@repo/auth";
 import { prisma } from "@repo/database";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { CLIENT_SEGMENT_CODES, SYSTEM_ROLES } from "../lib/constants";
 
 export async function updateStepStatus(projectId: string, stepId: string, status: string, value?: string) {
     const session = await auth();
@@ -28,10 +29,56 @@ export async function updateStepStatus(projectId: string, stepId: string, status
     const dataPoint = await prisma.masterDataPoint.findUnique({ where: { id: stepId } });
     if (!dataPoint) throw new Error("Master Data corrupt");
 
-    // Role Check
-    const userRoleId = session.user.role?.id;
-    if (userRoleId !== 'admin' && userRoleId !== 'super_admin' && userRoleId !== dataPoint.role) {
-        throw new Error(`Unauthorized: This step requires role '${dataPoint.role}'`);
+
+
+    // Auth Check
+    const sessionEmail = session.user.email;
+    if (!sessionEmail) throw new Error("No Email in Session");
+
+    // [SECURITY] Fetch Fresh User Data from DB (Don't trust Stale Session)
+    const user = await prisma.user.findUnique({
+        where: { email: sessionEmail },
+        include: { role: true }
+    });
+
+    const userRoleId = user?.roleId;
+
+    // Parse User Permissions from DB
+    let userPermissions: Record<string, string> = {};
+    if (user?.role?.permissions) {
+        try {
+            userPermissions = typeof user.role.permissions === 'string'
+                ? JSON.parse(user.role.permissions)
+                : user.role.permissions;
+        } catch (e) {
+            console.error("Permission Parse Error", e);
+        }
+    }
+
+    // 1. Check Capability (Preferred)
+    if (dataPoint.requiredPermission) {
+        console.log('[DEBUG] Checking Permission:', {
+            required: dataPoint.requiredPermission,
+            userRole: userRoleId,
+            userPermissions: userPermissions,
+            hasPermissionKey: !!userPermissions[dataPoint.requiredPermission],
+            value: userPermissions[dataPoint.requiredPermission]
+        });
+
+        const hasCapability = userPermissions[dataPoint.requiredPermission] === 'edit' || userPermissions[dataPoint.requiredPermission] === 'view';
+        // Note: Usually we require 'edit' to update status, but logic might vary. 
+        // For 'updateStepStatus', 'edit' is implied necessary.
+        const canEdit = userPermissions[dataPoint.requiredPermission] === 'edit';
+
+        if (!canEdit && userRoleId !== SYSTEM_ROLES.SUPER_ADMIN) {
+            throw new Error(`Unauthorized: You need permission '${dataPoint.requiredPermission}' (edit) to perform this action.`);
+        }
+    }
+    // 2. Legacy Fallback (Role Match)
+    else {
+        if (userRoleId !== SYSTEM_ROLES.ADMIN && userRoleId !== SYSTEM_ROLES.SUPER_ADMIN && userRoleId !== dataPoint.role) {
+            throw new Error(`Unauthorized (Legacy): This step requires role '${dataPoint.role}'`);
+        }
     }
 
     // 3. Dynamic Gating Check (Rule Engine)
@@ -71,7 +118,13 @@ export async function updateStepStatus(projectId: string, stepId: string, status
         const previousSteps = project.service.steps.filter((s: any) => s.stepOrder < targetStepDef.stepOrder);
         const allPreviousCompleted = previousSteps.every((s: any) => {
             const log = project.logs.find((l: any) => l.dataPointId === s.dataPointId);
-            return log?.status === 'completed';
+            const isComplete = log?.status === 'completed';
+
+            if (!isComplete) {
+                console.log(`[ACTION BLOCKED] Missing Step: ${s.dataPointId} (Order: ${s.stepOrder})`);
+                console.log(`[DEBUG] Current Step: ${stepId} (Order: ${targetStepDef.stepOrder})`);
+            }
+            return isComplete;
         });
         if (!allPreviousCompleted) {
             isLocked = true;
@@ -120,6 +173,13 @@ export async function updateStepStatus(projectId: string, stepId: string, status
                         where: { role: { id: nextRoleName } },
                         include: { pushSubscriptions: true }
                     });
+
+                    // [FIX] Update Project 'managedBy' for Dashboard Visibility
+                    await prisma.project.update({
+                        where: { id: projectId },
+                        data: { managedBy: nextRoleName }
+                    });
+
 
                     // Prepare Notification
                     const title = `Antrian Baru: ${project.title}`;
@@ -196,27 +256,78 @@ export async function createProject(formData: FormData) {
 
     if (!service) throw new Error("Service not found");
 
-    // 2. Validate User Role vs Category
-    const userRoleId = session.user.role?.id;
-    const isSuperAdmin = userRoleId === 'super_admin';
-    const isMarketingKBM = userRoleId === 'marketing_kbm';
-    const isMarketingUmum = userRoleId === 'marketing_external';
+    // 2. Access Control (Permission Based)
+    console.log('[DEBUG] Session User:', JSON.stringify(session.user, null, 2));
 
-    if (!isSuperAdmin && !isMarketingKBM && !isMarketingUmum) {
-        throw new Error("Unauthorized: Only Marketing or Super Admin can create projects.");
+    let userRoleId = session.user.role?.id;
+
+    // Fallback: If session is stale and missing roleId, fetch from DB using email
+    if (!userRoleId && session.user?.email) {
+        console.log('[DEBUG] Role ID missing in session, fetching from DB...');
+        const user = await prisma.user.findUnique({
+            where: { email: session.user.email },
+            select: { roleId: true }
+        });
+        userRoleId = user?.roleId || undefined;
     }
 
-    // Determine Category
-    let category = 'umum';
-    if (isMarketingKBM) category = 'kbm';
-    if (isMarketingUmum) category = 'umum';
-    if (isSuperAdmin) {
-        // Default or could be passed from form if we had a field. For now default to 'umum' or infer from something else.
-        category = 'kbm'; // Let Super Admin create KBM by default for tests
+    if (!userRoleId) {
+        console.error('[DEBUG] Role ID still missing after DB fetch.');
+        throw new Error("Unauthorized: No Role Assigned to User");
+    }
+
+    const userRole = await prisma.role.findUnique({
+        where: { id: userRoleId }
+    });
+
+    if (!userRole) throw new Error("Unauthorized: Invalid Role");
+
+    let hasPermission = false;
+    try {
+        const permissions = JSON.parse(userRole.permissions || '{}');
+        if (permissions['manage_order'] === 'edit') {
+            hasPermission = true;
+        }
+    } catch (e) {
+        console.error("Failed to parse role permissions", e);
+    }
+
+    // Fallback for hardcoded system admins if DB permissions fail or are empty
+    if (userRoleId === SYSTEM_ROLES.SUPER_ADMIN) hasPermission = true;
+
+    if (!hasPermission) {
+        throw new Error(`Unauthorized (Role: ${userRole.name}): You do not have 'manage_order' (edit) permission required to create projects.`);
+    }
+
+    // Determine Category Logic based on Role ID (still necessary for business logic, not access control)
+    // REMOVED INFERENCE: Now we trust the Admin's input from the form, since they have permission to create.
+    let category = formData.get('category') as string;
+
+    // Validate against Dynamic Segments
+    if (category) {
+        const validSegment = await prisma.clientSegment.findUnique({ where: { code: category } });
+        if (!validSegment) category = ''; // Invalid, force fallback
+    }
+
+    if (!category) {
+        // Fallback to first available segment or default 'umum'
+        const defaultSegment = await prisma.clientSegment.findFirst({ orderBy: { order: 'asc' } });
+        category = defaultSegment?.code || 'umum';
     }
 
     // 3. Create Project
-    const projectId = `PRJ-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`; // Simple ID gen
+    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // Dynamic ID Prefix derived from Category (e.g. 'kbm' -> 'KBM', 'umum' -> 'UMU')
+    // Ensure it's 3 chars
+    const prefix = (category || 'GEN').substring(0, 3).toUpperCase();
+
+    // Special handling if needed? No, let's keep it generic.
+    // Maybe 'umum' maps to 'EXT' for backward compatibility? 
+    // Let's stick to the generated prefix for consistency with new structure.
+    const typeCode = prefix;
+
+    const projectId = `SPT-${typeCode}-${new Date().getFullYear()}-${randomSuffix}`;
 
     // Determine Author ID if possible (for now assume the creator is the author if role matches, else just string)
     // For MVP, we'll just store the string name or link to current user if they are author.
@@ -229,6 +340,7 @@ export async function createProject(formData: FormData) {
             authorName,
             // authorId: ... (Feature for later: User Picker)
             serviceId,
+            productId: formData.get('productId') as string || null, // Capture Product ID
             status: 'active',
             publisher,
             category,
@@ -245,4 +357,71 @@ export async function createProject(formData: FormData) {
 
     revalidatePath('/');
     redirect(`/project/${projectId}`);
+}
+
+export async function updateProject(formData: FormData) {
+    const session = await auth();
+    if (!session) throw new Error("Unauthorized");
+
+    const id = formData.get('id') as string;
+    const title = formData.get('title') as string;
+    const authorName = formData.get('authorName') as string;
+    const publisher = formData.get('publisher') as string;
+    const quantity = parseInt(formData.get('quantity') as string) || 0;
+    const category = formData.get('category') as string;
+
+    // 1. Permission Check
+    let userRoleId = session.user.role?.id;
+    // Fallback if missing
+    if (!userRoleId && session.user?.email) {
+        const user = await prisma.user.findUnique({ where: { email: session.user.email }, select: { roleId: true } });
+        userRoleId = user?.roleId || undefined;
+    }
+
+    // Check Role
+    const userRole = await prisma.role.findUnique({ where: { id: userRoleId } });
+    if (!userRole) throw new Error("Unauthorized: Invalid Role");
+
+    let hasPermission = false;
+    try {
+        const permissions = JSON.parse(userRole.permissions || '{}');
+        if (permissions['manage_order'] === 'edit') hasPermission = true;
+    } catch (e) { }
+    if (userRoleId === SYSTEM_ROLES.SUPER_ADMIN) hasPermission = true;
+
+    if (!hasPermission) throw new Error("Unauthorized: You do not have permission to edit projects.");
+
+    // 2. Update Project
+    await prisma.project.update({
+        where: { id },
+        data: {
+            title,
+            authorName,
+            publisher,
+            quantity,
+            category
+        }
+    });
+
+    revalidatePath('/');
+    revalidatePath(`/project/${id}`);
+    redirect('/dashboard');
+}
+
+export async function verifyProjectAccess(tokenOrId: string) {
+    const project = await prisma.project.findFirst({
+        where: {
+            OR: [
+                { id: tokenOrId },
+                { publicToken: tokenOrId }
+            ]
+        },
+        select: { title: true }
+    });
+
+    if (!project) {
+        return { valid: false, error: 'Project tidak ditemukan. Pastikan ID/Token benar.' };
+    }
+
+    return { valid: true, title: project.title };
 }

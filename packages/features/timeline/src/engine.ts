@@ -3,6 +3,8 @@ export interface StepViewModel {
     id: string;
     label: string;
     role: string;
+    roleId?: string; // [NEW]
+    requiredPermission?: string; // [NEW]
     status: 'completed' | 'active' | 'pending' | 'locked' | 'warning';
     isCurrent: boolean;
     isLocked?: boolean;
@@ -15,7 +17,7 @@ export interface ServiceStepDefinition {
     dependencyRule?: string; // JSON string e.g. { "required": "dp_confirm", "status": "completed" }
 }
 
-export type MasterDataMap = Record<string, { id: string, label: string, role: string }>;
+export type MasterDataMap = Record<string, { id: string, label: string, role: string, requiredPermission?: string }>;
 export type ServiceMap = Record<string, { id: string, name: string, type: string, steps: ServiceStepDefinition[] }>;
 
 
@@ -124,6 +126,8 @@ export function generateProjectViewModel(
             id: stepId,
             label: masterDefinition.label,
             role: roleName,
+            roleId, // [NEW] Raw Role ID for logic check
+            requiredPermission: masterDefinition.requiredPermission, // [NEW] Capability check
             status,
             date: logData?.value === 'active' ? 'Sedang Proses' : logData?.value,
             isCurrent,

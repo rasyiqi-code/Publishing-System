@@ -9,7 +9,22 @@
     "scripts": {
         "db:generate": "prisma generate",
         "db:push": "prisma db push",
-        "db:seed": "tsx seed.ts"
+        "db:seed": "tsx seed.ts",
+        "db:seed-products": "tsx seed-products.ts",
+        "db:migrate-categories": "tsx migrate-categories.ts",
+        "db:fix-visibility": "tsx fix-visibility.ts",
+        "db:patch-permissions": "tsx patch-permissions.ts",
+        "db:patch-add-steps": "tsx patch-add-steps.ts",
+        "db:check-state": "tsx check-state.ts",
+        "db:test-dashboard": "tsx test-dashboard.ts",
+        "db:patch-integrate-layouter": "tsx patch-integrate-layouter.ts",
+        "db:patch-layouter-permissions": "tsx patch-layouter-permissions.ts",
+        "db:patch-acc-permissions": "tsx patch-acc-permissions.ts",
+        "db:reproduce-lock": "tsx reproduce-lock.ts",
+        "db:fix-missing-logs": "tsx fix-missing-logs.ts",
+        "test:perm-logic": "tsx test-permission-logic.ts",
+        "db:inspect-md": "tsx inspect-md.ts",
+        "db:patch-rename-roles": "tsx patch-rename-roles.ts"
     },
     "dependencies": {
         "@prisma/client": "5.22.0",

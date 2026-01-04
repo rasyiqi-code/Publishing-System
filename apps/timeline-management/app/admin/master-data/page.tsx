@@ -1,4 +1,5 @@
 import { prisma } from "@repo/database";
+import { auth } from "@repo/auth";
 import { MasterDataList } from "./MasterDataList";
 import { deleteMasterData, updateMasterData } from "../actions";
 import { MasterDataForm } from "./MasterDataForm";
@@ -6,6 +7,23 @@ import { MasterDataForm } from "./MasterDataForm";
 export const dynamic = 'force-dynamic';
 
 export default async function MasterDataPage() {
+    const session = await auth(); // Need auth import
+    const user = session?.user;
+
+    // Permission Gate
+    let canAccess = false;
+    if (user?.role?.id === 'super_admin') {
+        canAccess = true;
+    } else if (user?.role?.id) {
+        const fullRole = await prisma.role.findUnique({ where: { id: user.role.id } });
+        const perms = JSON.parse(fullRole?.permissions as string || '{}');
+        if (perms['manage_system_config']) canAccess = true;
+    }
+
+    if (!canAccess) {
+        return <div className="p-10 text-center text-red-600 font-bold">Unauthorized Access</div>;
+    }
+
     const [dataPoints, roles] = await Promise.all([
         prisma.masterDataPoint.findMany({ orderBy: { id: 'asc' } }),
         prisma.role.findMany({ orderBy: { name: 'asc' } })

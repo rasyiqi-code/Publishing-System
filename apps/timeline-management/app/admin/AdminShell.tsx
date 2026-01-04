@@ -12,9 +12,10 @@ interface AdminShellProps {
         image?: string | null;
     };
     brandName?: string;
+    permissions?: any;
 }
 
-export function AdminShell({ children, user, brandName }: AdminShellProps) {
+export function AdminShell({ children, user, brandName, permissions }: AdminShellProps) {
     const [isCollapsed, setIsCollapsed] = useState(true);
 
     return (
@@ -24,6 +25,7 @@ export function AdminShell({ children, user, brandName }: AdminShellProps) {
                 isCollapsed={isCollapsed}
                 onToggle={() => setIsCollapsed(!isCollapsed)}
                 brandName={brandName}
+                permissions={permissions}
             />
 
             {/* Main Content Area */}

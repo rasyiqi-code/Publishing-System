@@ -2,6 +2,7 @@ import { DashboardClient } from "../DashboardClient";
 import { prisma } from "@repo/database";
 import { auth } from "@repo/auth";
 import { createProject } from "../actions";
+import { CLIENT_SEGMENT_CODES, PERMISSION_KEYS, SYSTEM_ROLES } from "../../lib/constants";
 import { getGlobalSettings } from "../admin/actions";
 
 export const dynamic = 'force-dynamic';
@@ -22,23 +23,64 @@ export default async function Page(props: { searchParams: Promise<{ serviceId?: 
         whereClause.serviceId = serviceId;
     }
 
-    // Role Logic Mapping matched with Seed.ts
-    // Clients: admin_kbm, admin_external
-    if ((roleId === 'admin_kbm' || roleId === 'admin_external') && user?.id) {
-        whereClause.authorId = user.id;
+    // ---------------------------------------------------------
+    // DYNAMIC ASSIGNMENT LOGIC (THE "ADAPTIVE" ENGINE)
+    // ---------------------------------------------------------
+
+    // 1. Fetch Role Details
+    let userPermissions: Record<string, string> = {};
+    let isSuperAdmin = false;
+
+    if (roleId) {
+        const fullRole = await prisma.role.findUnique({ where: { id: roleId } });
+        if (fullRole) {
+            isSuperAdmin = fullRole.id === SYSTEM_ROLES.SUPER_ADMIN;
+            try {
+                userPermissions = typeof fullRole.permissions === 'string'
+                    ? JSON.parse(fullRole.permissions)
+                    : (fullRole.permissions || {});
+            } catch (e) {
+                console.error("Permission Parse Error", e);
+            }
+        }
     }
-    // Marketing Internal
-    else if (roleId === 'marketing_kbm') {
-        whereClause.OR = [
-            { category: 'kbm' },
-            { category: 'penulis' } // Penulis Mitra treated as KBM scope
-        ];
+
+    // 2. Define "Visibility Rules" based on Role
+    // This implements the "Systematic Randomness" user requested.
+
+    const hasViewAll = isSuperAdmin || userPermissions['view_all_projects'] === 'view';
+
+    // Default: User sees only their own projects
+    if (!hasViewAll) {
+        if (user?.id) whereClause.authorId = user.id;
     }
-    // Marketing External
-    else if (roleId === 'marketing_external') {
-        whereClause.category = 'umum';
+    else {
+        // Special Handling for "Segmented Admins"
+        // Uses GENERIC Permission Keys + Dynamic Assignment.
+
+        const visibleConditions: any[] = [];
+
+        // [REFRACTOR] Use Dynamic Client Segments from Database
+        const dynamicSegments = await prisma.clientSegment.findMany();
+
+        dynamicSegments.forEach(segment => {
+            if (segment.viewPermission && userPermissions[segment.viewPermission] === 'view') {
+                visibleConditions.push({ category: segment.code });
+            }
+        });
+
+        // 3. Dynamic Override (The "Random" Factor)
+        // If a project is explicitly assigned to THIS Role, show it.
+        if (roleId) {
+            visibleConditions.push({ managedBy: roleId });
+        }
+
+        // Apply Filters if any exist. 
+        if (visibleConditions.length > 0 && !isSuperAdmin) {
+            whereClause.OR = visibleConditions;
+        }
     }
-    // Super Admin & Functional Admins (Finance, Legal, Print) see ALL by default
+    // ---------------------------------------------------------
 
 
     const [rawProjects, rawServices, rawMasterData, settings] = await Promise.all([

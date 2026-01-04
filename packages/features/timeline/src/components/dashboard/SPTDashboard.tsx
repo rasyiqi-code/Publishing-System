@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from 'react';
-import { Package, FileText, Truck, AlertCircle, User, Layers, Ticket } from 'lucide-react';
+import { Package, FileText, Truck, AlertCircle, User, Layers, Ticket, PenTool } from 'lucide-react';
 import { generateProjectViewModel, MasterDataMap, ServiceMap } from '../../engine';
 
 interface SPTDashboardProps {
@@ -93,39 +93,50 @@ export const SPTDashboard = ({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {satuanProjects.map((p) => (
-                                    <tr
-                                        key={p.id}
-                                        onClick={() => onSelectProject(p)}
-                                        className="hover:bg-indigo-50/30 transition-colors cursor-pointer group"
-                                    >
-                                        <td className="px-6 py-4">
-                                            <span className="font-mono text-xs font-bold text-slate-500">{p.id}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{p.title}</div>
-                                            <div className="text-xs text-slate-500">{p.serviceName} • {p.authorName || p.author}</div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide
-                                                    ${p.status === 'active' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                                    p.status === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-gray-50 text-gray-600 border border-gray-100'}`}>
-                                                {p.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-                                                <span className="text-sm font-bold text-indigo-700">
-                                                    {p.steps.find((s: any) => s.isCurrent)?.label || 'Menunggu'}
+                                {satuanProjects.map((p) => {
+                                    const progress = Math.round((p.steps.filter((s: any) => s.status === 'completed').length / p.steps.length) * 100);
+                                    const isComplete = progress === 100;
+                                    const displayStatus = isComplete ? 'completed' : p.status;
+
+                                    return (
+                                        <tr
+                                            key={p.id}
+                                            onClick={() => onSelectProject(p)}
+                                            className="hover:bg-indigo-50/30 transition-colors cursor-pointer group"
+                                        >
+                                            <td className="px-6 py-4">
+                                                <span className="font-mono text-xs font-bold text-slate-500">{p.id}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{p.title}</div>
+                                                <div className="text-xs text-slate-500">{p.serviceName} • {p.authorName || p.author}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide
+                                                        ${displayStatus === 'active' ? 'bg-green-50 text-green-700 border border-green-100' :
+                                                        displayStatus === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                                            displayStatus === 'completed' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-gray-50 text-gray-600 border border-gray-100'}`}>
+                                                    {displayStatus}
                                                 </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button className="text-xs font-bold text-indigo-600 hover:underline">Lihat Detail →</button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    {isComplete ? (
+                                                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                                    ) : (
+                                                        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                                                    )}
+                                                    <span className={`text-sm font-bold ${isComplete ? 'text-blue-700' : 'text-indigo-700'}`}>
+                                                        {isComplete ? 'Selesai' : (p.steps.find((s: any) => s.isCurrent)?.label || 'Menunggu')}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button className="text-xs font-bold text-indigo-600 hover:underline">Lihat Detail →</button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -141,55 +152,70 @@ export const SPTDashboard = ({
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {sptProjects.map((p) => (
-                            <div
-                                key={p.id}
-                                onClick={() => onSelectProject(p)}
-                                className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 cursor-pointer group flex flex-col justify-between h-full"
-                            >
-                                <div>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">{p.id}</span>
+                        {sptProjects.map((p) => {
+                            const progress = Math.round((p.steps.filter((s: any) => s.status === 'completed').length / p.steps.length) * 100);
+                            const isComplete = progress === 100;
+                            const displayStatus = isComplete ? 'completed' : p.status;
+
+                            return (
+                                <div
+                                    key={p.id}
+                                    onClick={() => onSelectProject(p)}
+                                    className="bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-6 cursor-pointer group flex flex-col justify-between h-full"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">{p.id}</span>
+                                                <a
+                                                    href={`/project/${p.id}/edit`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-indigo-600 transition-colors"
+                                                    title="Edit Proyek"
+                                                >
+                                                    <PenTool className="w-3 h-3" />
+                                                </a>
+                                            </div>
+                                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide
+                                                    ${displayStatus === 'active' ? 'bg-green-50 text-green-700 border border-green-100' :
+                                                    displayStatus === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                                        displayStatus === 'completed' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-gray-50 text-gray-600 border border-gray-100'}`}>
+                                                {displayStatus}
+                                            </span>
                                         </div>
-                                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide
-                                                ${p.status === 'active' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                                p.status === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-gray-50 text-gray-600 border border-gray-100'}`}>
-                                            {p.status}
-                                        </span>
+
+                                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors mb-2 line-clamp-2 leading-tight">
+                                            {p.title}
+                                        </h3>
+
+                                        <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
+                                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-[10px] text-white font-bold">
+                                                {p.author?.[0]?.toUpperCase() || 'U'}
+                                            </div>
+                                            <span className="font-medium truncate">{p.author}</span>
+                                        </div>
                                     </div>
 
-                                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors mb-2 line-clamp-2 leading-tight">
-                                        {p.title}
-                                    </h3>
-
-                                    <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
-                                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-400 flex items-center justify-center text-[10px] text-white font-bold">
-                                            {p.author?.[0]?.toUpperCase() || 'U'}
+                                    <div className="mt-auto pt-4 border-t border-gray-50">
+                                        <div className="flex justify-between items-end mb-2">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Progress</span>
+                                            <span className={`text-xs font-bold ${isComplete ? 'text-blue-600' : 'text-indigo-600'}`}>
+                                                {progress}%
+                                            </span>
                                         </div>
-                                        <span className="font-medium truncate">{p.author}</span>
+
+                                        <div className="flex gap-1 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                            {p.steps.map((s: any, i: number) => (
+                                                <div
+                                                    key={i}
+                                                    className={`flex-1 transition-all duration-300 ${s.status === 'completed' ? 'bg-indigo-500' : s.status === 'active' ? 'bg-indigo-300 animate-pulse' : 'bg-transparent'}`}
+                                                />
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-
-                                <div className="mt-auto pt-4 border-t border-gray-50">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Progress</span>
-                                        <span className="text-xs font-bold text-indigo-600">
-                                            {Math.round((p.steps.filter((s: any) => s.status === 'completed').length / p.steps.length) * 100)}%
-                                        </span>
-                                    </div>
-
-                                    <div className="flex gap-1 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                                        {p.steps.map((s: any, i: number) => (
-                                            <div
-                                                key={i}
-                                                className={`flex-1 transition-all duration-300 ${s.status === 'completed' ? 'bg-indigo-500' : s.status === 'active' ? 'bg-indigo-300 animate-pulse' : 'bg-transparent'}`}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}

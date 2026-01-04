@@ -8,6 +8,7 @@ const useSecureCookies = process.env.AUTH_URL?.startsWith("https://")
 // ...
 export const authConfig = {
     debug: true,
+    secret: process.env.AUTH_SECRET, // Fix MissingSecret error
     adapter: PrismaAdapter(prisma),
     // ...
     // Shared Cookie Config for localhost:3000 and localhost:3001
@@ -46,12 +47,12 @@ export const authConfig = {
                 });
 
                 if (user && user.password === credentials.password) {
-                    return user;
+                    return user as any;
                 }
 
                 // Allow automatic login for seed users
                 if (user && credentials.password === 'password') {
-                    return user;
+                    return user as any;
                 }
 
                 return null;
@@ -65,9 +66,11 @@ export const authConfig = {
             if (session.user && token.sub) {
                 session.user.id = token.sub;
             }
-            if (token.role) {
-                // @ts-ignore
-                session.user.role = { name: token.role }; // Restore expected structure { name: 'admin' }
+            if (token.role || token.roleId) {
+                session.user.role = {
+                    name: token.role as string,
+                    id: token.roleId as string
+                };
             }
             return session;
         },
@@ -76,8 +79,9 @@ export const authConfig = {
                 // User from authorize() is the Prisma User object which included { role: true }
                 // Cast to any to access the included relation
                 const u = user as any;
-                if (u.role && u.role.name) {
-                    token.role = u.role.name; // Store "admin", "author" etc.
+                if (u.role) {
+                    token.role = u.role.name; // Store "Super Admin"
+                    token.roleId = u.role.id; // Store "super_admin"
                 }
             }
             return token;

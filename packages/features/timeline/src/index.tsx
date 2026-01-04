@@ -7,5 +7,6 @@ export * from './components/public/PublicTimeline';
 export * from './engine';
 export * from './components/DevRoleSwitcher';
 export * from './components/admin/WorkflowCanvas';
+export * from './components/dashboard/EditProjectForm';
 
 

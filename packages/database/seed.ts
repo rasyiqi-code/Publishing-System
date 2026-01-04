@@ -7,20 +7,31 @@ async function main() {
     console.log('🌱 Starting KBM Seed...');
 
     // 1. Clean up
+    // 1. Clean up
     await prisma.projectLog.deleteMany();
     await prisma.project.deleteMany();
-    await prisma.product.deleteMany();          // Moved up
-    await prisma.productCategory.deleteMany();  // Moved up
+    await prisma.product.deleteMany();
+    await prisma.productCategory.deleteMany();
     await prisma.serviceStep.deleteMany();
     await prisma.serviceDefinition.deleteMany();
     await prisma.masterDataPoint.deleteMany();
+    await prisma.clientSegment.deleteMany();
     await prisma.account.deleteMany();
     await prisma.session.deleteMany();
     await prisma.user.deleteMany();
     await prisma.role.deleteMany();
-
-
     // 2. Auth & RBAC Setup (KBM Specific)
+    // ... (existing code)
+
+    // 0. Client Segments (Dynamic Categories)
+    console.log('... creating Client Segments');
+    await prisma.clientSegment.createMany({
+        data: [
+            { code: 'kbm', label: 'Mitra Kampus (KBM)', viewPermission: 'view_segment_institutional', order: 1 },
+            { code: 'umum', label: 'Mitra Umum/Swasta', viewPermission: 'view_segment_general', order: 2 },
+            { code: 'penulis', label: 'Penulis Mitra', viewPermission: 'view_segment_institutional', order: 3 }
+        ]
+    });
     console.log('... creating Roles from Preset (System)');
     for (const role of PRESET_ROLES) {
         await prisma.role.create({
@@ -39,8 +50,8 @@ async function main() {
         // 1. Admin Marketing Penerbit KBM (Internal)
         {
             id: 'marketing_kbm',
-            name: 'Admin Marketing Penerbit KBM',
-            description: 'Menangani Mitra Kampus & Penulis Mitra',
+            name: 'Admin Penerbit KBM', // Renamed from Admin Marketing KBM
+            description: 'Divisi Institusi & Kampus',
             permissions: {
                 'view_all_projects': 'view',
                 'manage_users': 'view',
@@ -49,18 +60,23 @@ async function main() {
                 'manage_creative_flow': 'edit', // Assign Koordinator
                 'submit_draft': 'view',
                 'verify_dp': 'view',
-                'verify_settlement': 'view'
+                'verify_settlement': 'view',
+                'manage_products': 'edit',
+                'manage_digital_assets': 'edit',
+                'approve_creative': 'edit', // Added for internal ACC
+                'view_segment_institutional': 'view' // [Generic] Was access_scope_kbm
             }
         },
-        // 2. Admin Penerbit KBM (Client - Kampus)
+        // 2. Admin KBM (Client) - RENAMED to avoid collision
         {
             id: 'admin_kbm',
-            name: 'Admin Penerbit KBM',
+            name: 'Klien Validator', // Renamed from Admin Penerbit KBM
             description: 'Mitra Institusi / Kampus',
             permissions: {
                 'manage_order': 'view',
-                'approve_creative': 'edit', // Client ACC
-                'submit_draft': 'view'
+                'submit_draft': 'view',
+                'manage_digital_assets': 'edit', // [FIX] Needs edit to complete 'send_certificate'
+                'approve_creative': 'edit' // [RESTORED] Client ACC
             }
         },
         // 3. Admin Marketing Penerbit Luar KBM (Internal/External Marketing for General)
@@ -73,7 +89,9 @@ async function main() {
                 'manage_order': 'edit',
                 'manage_shipping': 'view',
                 'verify_dp': 'view',
-                'verify_settlement': 'view'
+                'verify_settlement': 'view',
+                'manage_products': 'edit',
+                'view_segment_general': 'view'       // [Generic] Was access_scope_external
             }
         },
         // 4. Admin Penerbit Luar KBM (Client - Umum/Swasta)
@@ -130,7 +148,9 @@ async function main() {
             description: 'Staff Layout & Design',
             permissions: {
                 'submit_draft': 'edit', // Upload draft assignments
-                'manage_creative_flow': 'view'
+                'manage_creative_flow': 'view',
+                'view_segment_institutional': 'view',
+                'view_segment_general': 'view'
             }
         },
         // 9. Kordinator Layout
@@ -141,7 +161,11 @@ async function main() {
             permissions: {
                 'manage_creative_flow': 'edit', // Assign to layouter
                 'submit_draft': 'edit',
-                'approve_creative': 'view'
+                'approve_creative': 'view',
+                'view_segment_institutional': 'view', // [FIX] Matches ClientSegment table
+                'view_segment_general': 'view'
+
+
             }
         }
     ];
@@ -207,38 +231,43 @@ async function main() {
     console.log('... creating Master Data');
     const masterData = [
         // Phase 1: Draft & Kontrak
-        { id: 'input_order', label: 'Input Order', role: 'marketing_kbm', group: 'marketing' },
-        { id: 'upload_legal', label: 'Upload Dokumen Legalitas', role: 'marketing_kbm', group: 'marketing' },
+        { id: 'input_order', label: 'Input Order', role: 'marketing_kbm', group: 'marketing', requiredPermission: 'manage_order' },
+        { id: 'upload_legal', label: 'Upload Dokumen Legalitas', role: 'marketing_kbm', group: 'marketing', requiredPermission: 'manage_order' },
 
         // Phase 2: Gembok Finansial 1
-        { id: 'dp_confirm', label: 'Konfirmasi DP', role: 'finance', group: 'finance' },
+        { id: 'dp_confirm', label: 'Konfirmasi DP', role: 'finance', group: 'finance', requiredPermission: 'verify_dp' },
 
         // Phase 3: Produksi Kreatif
-        { id: 'assign_layout', label: 'Assign Koordinator', role: 'marketing_kbm', group: 'marketing' },
-        { id: 'upload_draft', label: 'Upload Draft Layout', role: 'layout_coordinator', group: 'production' },
-        { id: 'client_acc', label: 'ACC Final (Klien)', role: 'admin_kbm', group: 'client' }, // Or Penulis Mitra
+        { id: 'assign_layout', label: 'Assign Koordinator', role: 'marketing_kbm', group: 'marketing', requiredPermission: 'manage_creative_flow' },
+
+        // [NEW] Layouter Sub-flow
+        { id: 'assign_to_layouter', label: 'Assign ke Layouter', role: 'layout_coordinator', group: 'production', requiredPermission: 'manage_creative_flow' },
+        { id: 'submit_layout_work', label: 'Submit Hasil Layout', role: 'layouter', group: 'production', requiredPermission: 'submit_draft' },
+
+        { id: 'upload_draft', label: 'Upload Draft (Final Review)', role: 'layout_coordinator', group: 'production', requiredPermission: 'submit_draft' },
+        { id: 'client_acc', label: 'ACC Final (Klien)', role: 'admin_kbm', group: 'client', requiredPermission: 'approve_creative' },
 
         // Phase 4: Paralel Legalitas
-        { id: 'isbn_input', label: 'Input ISBN & HAKI', role: 'legal', group: 'legal' },
+        { id: 'isbn_input', label: 'Input ISBN & HAKI', role: 'legal', group: 'legal', requiredPermission: 'manage_isbn' },
 
         // Phase 5: Gembok Finansial 2 & Manufaktur
-        { id: 'upload_print_file', label: 'Upload File Siap Cetak', role: 'production', group: 'production' },
-        { id: 'full_payment', label: 'Konfirmasi Pelunasan', role: 'finance', group: 'finance' },
-        { id: 'print_exec', label: 'Naik Cetak', role: 'production', group: 'production' },
+        { id: 'upload_print_file', label: 'Upload File Siap Cetak', role: 'production', group: 'production', requiredPermission: 'manage_printing' },
+        { id: 'full_payment', label: 'Konfirmasi Pelunasan', role: 'finance', group: 'finance', requiredPermission: 'verify_settlement' },
+        { id: 'print_exec', label: 'Naik Cetak', role: 'production', group: 'production', requiredPermission: 'manage_printing' },
 
         // Phase 6: Closing
-        { id: 'shipping_resi', label: 'Input Resi Pengiriman', role: 'production', group: 'logistics' },
+        { id: 'shipping_resi', label: 'Input Resi Pengiriman', role: 'production', group: 'logistics', requiredPermission: 'manage_shipping' },
 
         // Phase 7: Digital Assets (After Sales)
-        { id: 'send_certificate', label: 'Tanggal Kirim Sertifikat', role: 'admin_kbm', group: 'digital_assets' },
-        { id: 'send_sale_link', label: 'Tanggal Kirim Link Penjualan', role: 'marketing_kbm', group: 'digital_assets' },
-        { id: 'send_testimony_link', label: 'Tanggal Kirim Link Testimoni', role: 'marketing_kbm', group: 'digital_assets' },
+        { id: 'send_certificate', label: 'Tanggal Kirim Sertifikat', role: 'admin_kbm', group: 'digital_assets', requiredPermission: 'manage_digital_assets' },
+        { id: 'send_sale_link', label: 'Tanggal Kirim Link Penjualan', role: 'marketing_kbm', group: 'digital_assets', requiredPermission: 'manage_digital_assets' },
+        { id: 'send_testimony_link', label: 'Tanggal Kirim Link Testimoni', role: 'marketing_kbm', group: 'digital_assets', requiredPermission: 'manage_digital_assets' },
 
         // Specs (Data Only)
-        { id: 'spec_kertas', label: 'Jenis Kertas', role: 'marketing_kbm', group: 'specs', inputType: 'text' },
-        { id: 'spec_cover', label: 'Jenis Cover', role: 'marketing_kbm', group: 'specs', inputType: 'text' },
-        { id: 'spec_dimensi', label: 'Ukuran Buku', role: 'marketing_kbm', group: 'specs', inputType: 'text' },
-        { id: 'spec_finishing', label: 'Finishing', role: 'marketing_kbm', group: 'specs', inputType: 'text' },
+        { id: 'spec_kertas', label: 'Jenis Kertas', role: 'marketing_kbm', group: 'specs', inputType: 'text', requiredPermission: 'manage_order' },
+        { id: 'spec_cover', label: 'Jenis Cover', role: 'marketing_kbm', group: 'specs', inputType: 'text', requiredPermission: 'manage_order' },
+        { id: 'spec_dimensi', label: 'Ukuran Buku', role: 'marketing_kbm', group: 'specs', inputType: 'text', requiredPermission: 'manage_order' },
+        { id: 'spec_finishing', label: 'Finishing', role: 'marketing_kbm', group: 'specs', inputType: 'text', requiredPermission: 'manage_order' },
     ];
 
     await prisma.masterDataPoint.createMany({ data: masterData });
@@ -257,13 +286,19 @@ async function main() {
         'upload_legal',
         'dp_confirm',      // Locks creative
         'assign_layout',
+        'assign_to_layouter', // [NEW]
+        'submit_layout_work', // [NEW]
         'upload_draft',
         'client_acc',
         'isbn_input',
         'full_payment',    // Locks print
         'upload_print_file',
         'print_exec',
-        'shipping_resi'
+        'shipping_resi',
+        // Phase 7: After Sales (Added as per audit)
+        'send_certificate',
+        'send_sale_link',
+        'send_testimony_link'
     ];
 
     for (const [index, stepId] of sptSequence.entries()) {

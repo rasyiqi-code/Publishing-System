@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@repo/auth";
 import { prisma } from "@repo/database";
 import { generateProjectViewModel } from "@repo/feature-timeline";
@@ -13,13 +13,19 @@ export default async function ProjectPage({ params }: PageProps) {
     const session = await auth();
     const { id } = await params;
 
+    // Strict Access Control: Must be logged in
+    if (!session?.user) {
+        redirect('/login');
+    }
+
     // Fetch Project
     const project = await prisma.project.findUnique({
         where: { id },
         include: {
             service: { include: { steps: { orderBy: { stepOrder: 'asc' } } } },
             logs: true,
-            author: true
+            author: true,
+            product: true // Fetch associated product
         }
     });
 
@@ -30,6 +36,8 @@ export default async function ProjectPage({ params }: PageProps) {
     const userRoleId = session?.user?.role?.id;
 
     let canViewAll = false;
+    let viewPermissions: string[] = [];
+
     if (userRoleId) {
         const userRoleDef = await prisma.role.findUnique({ where: { id: userRoleId } });
         if (userRoleDef) {
@@ -37,17 +45,56 @@ export default async function ProjectPage({ params }: PageProps) {
             try {
                 const perms = typeof userRoleDef.permissions === 'string'
                     ? JSON.parse(userRoleDef.permissions)
-                    : userRoleDef.permissions; // Handle if schema changed to Json type
+                    : userRoleDef.permissions;
 
                 canViewAll = userRoleDef.id === 'super_admin' || !!perms?.['view_all_projects'];
+
+                // Collect all 'view_segment_*' permissions
+                Object.keys(perms || {}).forEach(key => {
+                    if (key.startsWith('view_segment_') && perms[key] === 'view') {
+                        viewPermissions.push(key);
+                    }
+                });
+
             } catch (e) {
                 console.error("Failed to parse role permissions", e);
             }
         }
     }
 
-    // Enforce Isolation for Non-Staff (Partners/Clients)
-    if (userRoleId && !canViewAll && sessionUserId && project.authorId !== sessionUserId) {
+    // Access Logic:
+    // 1. Super Admin or 'view_all_projects' -> ALLOW
+    // 2. Author (Owner) -> ALLOW
+    // 3. Managed By (Explicit Assignment) -> ALLOW
+    // 4. Segment Permission (e.g. 'view_segment_kbm' for KBM projects) -> ALLOW
+
+    let accessGranted = false;
+
+    if (canViewAll) {
+        accessGranted = true;
+    } else if (sessionUserId && project.authorId === sessionUserId) {
+        accessGranted = true;
+    } else if (userRoleId && project.managedBy === userRoleId) {
+        accessGranted = true;
+    } else {
+        // Segment Check
+        // Need to fetch Segment Definition to map Code -> Permission Key
+        // Example: 'kbm' -> 'view_segment_kbm'
+        if (project.category) {
+            const segmentDef = await prisma.clientSegment.findUnique({ where: { code: project.category } });
+            if (segmentDef && segmentDef.viewPermission) {
+                // Check if user has this specific permission
+                // We need to re-fetch user permissions properly above if we want exact match, 
+                // OR just check if the Key exists in our collected viewPermissions.
+                // Re-parsing permissions above to be safe.
+                if (viewPermissions.includes(segmentDef.viewPermission)) {
+                    accessGranted = true;
+                }
+            }
+        }
+    }
+
+    if (!accessGranted) {
         return notFound();
     }
 
@@ -89,12 +136,26 @@ export default async function ProjectPage({ params }: PageProps) {
             ...project,
             logs: logsMap,
             currentStepId: null,
-            author: project.author?.name || project.authorName || 'Unknown'
+            author: project.author?.name || project.authorName || 'Unknown',
+            productName: (project as any).product?.name || 'Custom Project' // Pass Product Name
         },
         serviceMap,
         masterDataMap,
         roleMap
     );
+
+    // Parse Permissions for Client
+    let userPermissions: Record<string, string> = {};
+    if (userRoleId) {
+        const userRoleDef = await prisma.role.findUnique({ where: { id: userRoleId } });
+        if (userRoleDef) {
+            try {
+                userPermissions = typeof userRoleDef.permissions === 'string'
+                    ? JSON.parse(userRoleDef.permissions)
+                    : (userRoleDef.permissions || {});
+            } catch (e) { console.error("Permission Parse Error", e); }
+        }
+    }
 
     if (!projectViewModel) return <div>Error generating project view.</div>;
 
@@ -105,6 +166,7 @@ export default async function ProjectPage({ params }: PageProps) {
             project={projectViewModel}
             userRole={finalUserRole}
             baseRole={finalUserRole}
+            permissions={userPermissions} // [NEW] Pass permissions
             onUpdateStatus={async (pId, sId, st, val) => {
                 'use server';
                 await updateStepStatus(pId, sId, st, val);

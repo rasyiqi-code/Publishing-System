@@ -1,24 +1,47 @@
 'use client';
 
-import { useState } from 'react';
-import { Package, Search, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Package, Search, ArrowRight, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-export function PublicTrackingClient() {
+interface PublicTrackingClientProps {
+    error?: string;
+}
+
+export function PublicTrackingClient({ error: initialError }: PublicTrackingClientProps) {
     const [orderId, setOrderId] = useState('');
+    const [error, setError] = useState(initialError);
 
     const router = useRouter();
+
+    useEffect(() => {
+        if (initialError) setError(initialError);
+    }, [initialError]);
 
     const handleTrack = (e: React.FormEvent) => {
         e.preventDefault();
         if (orderId) {
-            router.push(`/project/${orderId}`);
+            setError(undefined);
+            router.push(`/?track=${orderId}`);
         }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setOrderId(e.target.value);
+        if (error) setError(undefined); // Clear error on typing
     };
 
     return (
         <div className="flex flex-col items-center justify-center p-6 mt-10 md:mt-20">
             <div className="w-full max-w-2xl text-center space-y-6">
+
+                {error && (
+                    <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-2xl flex items-center justify-center gap-2 animate-in slide-in-from-top-2">
+                        <AlertCircle size={18} />
+                        <span className="font-bold text-sm">{error}</span>
+                    </div>
+                )}
+
                 <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-black text-white shadow-2xl mb-4">
                     <Package size={40} />
                 </div>
@@ -41,9 +64,12 @@ export function PublicTrackingClient() {
                     <input
                         type="text"
                         value={orderId}
-                        onChange={(e) => setOrderId(e.target.value)}
+                        onChange={handleChange}
                         placeholder="Contoh: ORDER-12345"
-                        className="w-full pl-12 pr-14 py-4 rounded-2xl border-2 border-gray-100 bg-white text-lg font-bold text-slate-900 shadow-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all placeholder:font-medium placeholder:text-gray-300"
+                        className={`w-full pl-12 pr-14 py-4 rounded-2xl border-2 bg-white text-lg font-bold text-slate-900 shadow-xl focus:ring-4 outline-none transition-all placeholder:font-medium placeholder:text-gray-300 ${error
+                                ? 'border-red-200 focus:border-red-500 focus:ring-red-100'
+                                : 'border-gray-100 focus:border-indigo-500 focus:ring-indigo-100'
+                            }`}
                         required
                     />
                     <button

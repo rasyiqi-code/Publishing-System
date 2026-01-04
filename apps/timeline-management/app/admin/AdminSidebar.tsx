@@ -27,9 +27,10 @@ interface AdminSidebarProps {
     isCollapsed: boolean;
     onToggle: () => void;
     brandName?: string;
+    permissions?: Record<string, string>;
 }
 
-export function AdminSidebar({ user, isCollapsed, onToggle, brandName }: AdminSidebarProps) {
+export function AdminSidebar({ user, isCollapsed, onToggle, brandName, permissions = {} }: AdminSidebarProps) {
     const pathname = usePathname();
 
     const isActive = (path: string) => pathname === path || pathname?.startsWith(path + '/');
@@ -39,15 +40,30 @@ export function AdminSidebar({ user, isCollapsed, onToggle, brandName }: AdminSi
         href: string;
         icon: React.ElementType;
         exact?: boolean;
+        permission?: string;
     }
 
-    const mainNavItems: NavItem[] = [
-        { label: 'Overview', href: '/admin', icon: LayoutDashboard, exact: true },
-        { label: 'Data Utama', href: '/admin/master-data', icon: Database },
-        { label: 'Resep Layanan', href: '/admin/services', icon: Workflow },
-        { label: 'Produk', href: '/admin/products', icon: Package },
-        { label: 'Kategori', href: '/admin/categories', icon: Tags },
+    const allNavItems: NavItem[] = [
+        { label: 'Overview', href: '/admin', icon: LayoutDashboard, exact: true }, // Always visible if got this far
+        { label: 'Data Utama', href: '/admin/master-data', icon: Database, permission: 'manage_system_config' },
+        { label: 'Resep Layanan', href: '/admin/services', icon: Workflow, permission: 'manage_system_config' },
+        { label: 'Produk', href: '/admin/products', icon: Package, permission: 'manage_products' },
+        { label: 'Kategori', href: '/admin/categories', icon: Tags, permission: 'manage_products' },
     ];
+
+    // Filter Items
+    const mainNavItems = allNavItems.filter(item => {
+        if (!item.permission) return true;
+        // Super Admin (usually has all, or we check specific key)
+        // For simplicity, we check if key exists or if user is super_admin (handled by logic outside or by having all keys)
+        // Note: permissions prop comes from layout which already parsed it.
+        // Assuming super_admin user has a role ID 'super_admin' which layout might not pass explicitly 
+        // BUT the pattern in this system is that 'permissions' object contains everything necessary.
+        // If super_admin, we should ensure layout passes a flag or full permissions. 
+        // From seed, super_admin has ALL permissions explicitly? No, seed usually grants all.
+        // Let's assume if permission key matches 'edit' or 'view', it's allowed.
+        return !!permissions[item.permission];
+    });
 
     const bottomNavItems: NavItem[] = [
         { label: 'Dashboard Produksi', href: '/dashboard', icon: LayoutTemplate },

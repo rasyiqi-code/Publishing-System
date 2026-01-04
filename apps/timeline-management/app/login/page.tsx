@@ -1,21 +1,8 @@
 "use client";
 
-import { signIn } from "next-auth/react"; // Using client-side signIn for better control
+import { signIn } from "next-auth/react";
 import { useState } from "react";
-
-// Helper for default accounts
-const DEFAULT_ACCOUNTS = [
-    { label: "Super Admin", email: "admin@spt.com", role: "Superuser" },
-    { label: "Marketing KBM", email: "marketing_kbm@spt.com", role: "Front Office" },
-    { label: "Marketing Umum", email: "marketing_umum@spt.com", role: "Front Office" },
-    { label: "Finance", email: "finance@spt.com", role: "Operational" },
-    { label: "Legal", email: "legal@spt.com", role: "Operational" },
-    { label: "Print", email: "print@spt.com", role: "Operational" },
-    { label: "Koor Layout", email: "coord_layout@spt.com", role: "Creative" },
-    { label: "Layouter", email: "layouter@spt.com", role: "Creative" },
-    { label: "Klien KBM", email: "klien_kbm@spt.com", role: "Klien" },
-    { label: "Klien Umum", email: "klien_umum@spt.com", role: "Klien" },
-];
+import { LOGIN_ROLE_DEFAULTS as DEFAULT_ACCOUNTS } from "../../lib/constants";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("admin@spt.com");
